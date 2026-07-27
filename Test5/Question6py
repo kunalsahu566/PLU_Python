@@ -1,0 +1,200 @@
+<!-- # 6. Food Delivery Route Optimizer
+### Problem Statement
+A food delivery company stores restaurants and delivery locations.
+Database tables:
+Restaurant
+Delivery
+Orders
+### Requirements
+1. Fetch all pending orders.
+2. Build a **Graph** representing restaurants and delivery areas.
+3. Find the shortest delivery path using **BFS**.
+4. Display delivery order sequence.
+5. Mark completed deliveries in SQLite.
+### Concepts
+* Graph
+* BFS
+* SQL JOIN
+* UPDATE -->
+
+
+import sqlite3
+
+
+class DeliveryOptimizer:
+
+    def __init__(self):
+        self.graph = {}
+
+
+    def create_database(self):
+        conn = sqlite3.connect("delivery.db")
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS restaurants(
+            restaurant_id INTEGER PRIMARY KEY,
+            name TEXT,
+            location TEXT
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS deliveries(
+            delivery_id INTEGER PRIMARY KEY,
+            restaurant_id INTEGER,
+            area TEXT,
+            status TEXT
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS orders(
+            order_id INTEGER PRIMARY KEY,
+            restaurant_id INTEGER,
+            delivery_id INTEGER,
+            status TEXT
+        )
+        """)
+
+        cursor.execute("DELETE FROM restaurants")
+        cursor.execute("DELETE FROM deliveries")
+        cursor.execute("DELETE FROM orders")
+
+        restaurants = [
+            (1, "Pizza Hub", "A"),
+            (2, "Burger King", "B"),
+            (3, "Sushi Spot", "C")
+        ]
+
+        deliveries = [
+            (1, 1, "A", "Pending"),
+            (2, 1, "B", "Pending"),
+            (3, 2, "C", "Pending"),
+            (4, 3, "D", "Pending")
+        ]
+
+        orders = [
+            (1, 1, 1, "Pending"),
+            (2, 1, 2, "Pending"),
+            (3, 2, 3, "Pending"),
+            (4, 3, 4, "Pending")
+        ]
+
+        cursor.executemany(
+            "INSERT INTO restaurants VALUES (?,?,?)",
+            restaurants
+        )
+
+        cursor.executemany(
+            "INSERT INTO deliveries VALUES (?,?,?,?)",
+            deliveries
+        )
+
+        cursor.executemany(
+            "INSERT INTO orders VALUES (?,?,?,?)",
+            orders
+        )
+
+        conn.commit()
+        conn.close()
+
+    def fetch_orders(self):
+
+        conn = sqlite3.connect("delivery.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT order_id,restaurant_id,delivery_id
+        FROM orders
+        WHERE status='Pending'
+        """)
+
+        orders = cursor.fetchall()
+
+        conn.close()
+        return orders
+
+
+    def create_graph(self):
+
+        self.graph = {
+            "A": ["B", "C"],
+            "B": ["A", "D"],
+            "C": ["A", "D"],
+            "D": ["B", "C"]
+        }
+
+
+    def bfs(self, start, goal):
+
+        queue = []
+        visited = []
+        parent = {}
+
+        queue.append(start)
+        visited.append(start)
+        parent[start] = None
+
+        while len(queue) > 0:
+            node = queue.pop(0)
+
+            if node == goal:
+                break
+            for neighbour in self.graph[node]:
+                if neighbour not in visited:
+                    visited.append(neighbour)
+                    queue.append(neighbour)
+                    parent[neighbour] = node
+        path = []
+        current = goal
+        while current != None:
+            path.append(current)
+            current = parent[current]
+        path.reverse()
+        return path
+
+
+    def complete_order(self, order_id):
+        conn = sqlite3.connect("delivery.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE orders SET status='Completed' WHERE order_id=?",
+            (order_id,)
+        )
+        cursor.execute("""
+        UPDATE deliveries
+        SET status='Completed'
+        WHERE delivery_id=
+        (
+            SELECT delivery_id
+            FROM orders
+            WHERE order_id=?
+        )
+        """, (order_id,))
+
+        conn.commit()
+        conn.close()
+
+
+    def run(self):
+        self.create_database()
+        orders = self.fetch_orders()
+        self.create_graph()
+        print("\nPending Orders\n")
+        for order in orders:
+            print(
+                "Order ID :", order[0],
+                "Restaurant :", order[1],
+                "Delivery :", order[2]
+            )
+        print("\nShortest Path From A to D\n")
+        path = self.bfs("A", "D")
+        print(" -> ".join(path))
+        for order in orders:
+            self.complete_order(order[0])
+        print("\nAll Orders Completed Successfully")
+
+
+optimizer = DeliveryOptimizer()
+optimizer.run()
+
